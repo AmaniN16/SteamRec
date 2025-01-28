@@ -9,23 +9,30 @@ import re
 import requests
 import xml.etree.ElementTree as ET
 
+# Scrape the target profile
 def scrape_steam_profile(steam_id):
     url = f"https://steamcommunity.com/id/{steam_id}/games?xml=1"
     response = requests.get(url)
     
+    # Return if page not found or other error
     if response.status_code != 200:
         print(f"Failed to retrieve data. HTTP Status code: {response.status_code}")
         return
     
+    # Get to root of the page
     root = ET.fromstring(response.text)
     
+    # Find account's Steam ID
     steam_id = root.find('steamID').text
     games = []
     
+    # Find all games in account
     for game in root.findall('.//game'):
+        # Get game name and appID
         app_id = game.find('appID').text
         name = game.find('name').text
         
+        # Get hours played. If it's 0, then N/A
         hours_on_record = game.find('hoursOnRecord')
         if hours_on_record is not None:
             hours_on_record = hours_on_record.text
@@ -37,9 +44,8 @@ def scrape_steam_profile(steam_id):
             'app_id': app_id,
             'hours_on_record': hours_on_record
         })
-    
-    games.sort(key=lambda game: game['name'])
 
+    # Return all games on the account
     return games
 
 def generate_csv(games):
@@ -55,10 +61,6 @@ def generate_csv(games):
 
     # Convert the file to a beautiful soup file
     doc = BeautifulSoup(page_content, 'html.parser')
-
-    # List of search filters
-
-    # , 'mostplayed', 'newreleases', 'upcomingreleases'
 
     # Create a CSV file to store the scraped data
     with open('games_mine.csv', mode='w', newline='', encoding='utf-8') as file:
@@ -112,18 +114,21 @@ def generate_csv(games):
                 review_summary = game.find('span', {'class': 'search_review_summary'})
                 reviews_html = review_summary['data-tooltip-html'] if review_summary else 'N/A'
 
+                # Get game appId for specific game details
                 id_elem = game.parent
                 app_id = id_elem['data-ds-appid'] if id_elem else 'N/A'
 
+                # Get game page
                 appdetails_req = requests.get(f"http://store.steampowered.com/app/{app_id}")
                 
+                # Look for genre and manufacturer
                 app_doc = BeautifulSoup(appdetails_req.content, 'html.parser')
                 soup_data = app_doc.find('div', {'id': 'genresAndManufacturer'})
 
                 if soup_data is not None:
                     print("Scraping game data with id {0}.".format(app_id))
-                    # get game details, it's in the first block
-
+                    
+                    # get game details
                     genre_elem = soup_data.find('span')
 
                     if genre_elem is not None:
@@ -133,15 +138,10 @@ def generate_csv(games):
 
                         genres_string = ','.join(genre for genre in genres)
 
-                            
-                        print(genres_string)
-
                         dev_elem = soup_data.find('div', {'class': 'dev_row'})
                         developer = dev_elem.find('a')
 
                         dev_string = developer.text
-                        
-                        print(dev_string)
 
                         # Use regular expressions to extract the percentage of reviews
                         match = re.search(r'(\d{2})', reviews_html)
@@ -150,7 +150,7 @@ def generate_csv(games):
                         # Write the extracted information to the CSV file
                         writer.writerow([name, published_date, discount_price, reviews_percentage, hours_on_record, app_id, genres_string, dev_string])
                 
-
+                # Check if all the games in the account have been queried, if so stop
                 if count == len(games):
                     return
 
